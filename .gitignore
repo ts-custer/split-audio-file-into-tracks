@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+######### Ts added:
+
+# folder created by Pycharm
+.idea/
