@@ -1,3 +1,5 @@
+# __main__.py
+
 import subprocess
 from argparse import Namespace, ArgumentParser
 
