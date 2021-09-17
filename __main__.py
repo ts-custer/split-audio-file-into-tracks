@@ -2,10 +2,10 @@
 
 import subprocess
 from argparse import Namespace, ArgumentParser
+from typing import List
+from math import copysign
 
-
-offset_default = 0.3
-tracks_file_name = 'tracks.txt'
+OFFSET_DEFAULT = 0.3
 
 
 def init_argument_parser() -> Namespace:
@@ -21,29 +21,73 @@ def init_argument_parser() -> Namespace:
     parser.add_argument('duration', type=float,
                         help="The silence duration in seconds that should be detected (e.g. 1.5)")
     # optional:
-    parser.add_argument('-o', '--offset', type=float, default=offset_default,
+    parser.add_argument('-o', '--offset', type=float, default=OFFSET_DEFAULT,
                         help=f'The offset in seconds before a track starts'
-                             f' (if not specified, the default value {offset_default} will be taken!)')
+                             f' (if not specified, the default value {OFFSET_DEFAULT} will be taken!)')
     # optional flag:
     parser.add_argument('-x', '--execute', action='store_true',
                         help='If set, the detected audio tracks will be written into current working directory')
     return parser.parse_args()
 
 
+def fetch_silence_ends(file, noise, duration) -> List[float]:
+    # e.g.
+    # ffmpeg -i recording.wav -af silencedetect=noise=-45dB:d=1.5 -f null - 2> >(grep 'silence_end') | awk '{print $5}'
+    #
+    p1 = subprocess.Popen(
+        ["ffmpeg", "-i", f"{file}", "-af", f"silencedetect=noise={noise}dB:d={duration}",
+         "-f", "null", "-"], stderr=subprocess.PIPE)
+    p2 = subprocess.Popen(["grep", "silence_end"], stdin=p1.stderr, stdout=subprocess.PIPE)
+    p3 = subprocess.Popen(["awk", "{print $5}"], stdin=p2.stdout, stdout=subprocess.PIPE)
+
+    # stdout_result is of type 'bytes'  e.g.  b'540.132\n947.927\n1300.19\n1627.23\n2018.4\n2647.47\n2842\n'
+    stdout_result = p3.communicate()[0]
+    split_mark = bytes(b'\n')
+    return [float(b) for b in stdout_result.split(split_mark) if b != b'']
+
+
+def round_away_from_zero(f: float) -> int:
+    return int(f + 0.5 * copysign(1, f))
+
+
+def format_seconds(seconds: int) -> str:
+    minutes = seconds / 60
+    return '%.02d:%.02d' % (minutes, seconds % 60)
+
+
+def print_expected_tracks():
+    old_silence_end = 0
+    for number, silence_end in enumerate(silence_ends, start=1):
+        track_duration_in_seconds = round_away_from_zero(silence_end - old_silence_end)
+        print('%.02d.wav' % number, '\t', format_seconds(track_duration_in_seconds))
+        old_silence_end = silence_end
+
+
+def write_tracks(file, offset):
+    number_of_tracks = len(silence_ends)
+    old_silence_end = 0
+    for number, silence_end in enumerate(silence_ends, start=1):
+        silence_end -= offset
+        track = '%.02d.wav' % number
+        subprocess_args = ['sox', file, track, 'trim', str(old_silence_end)]
+        if number < number_of_tracks:
+            subprocess_args.append(f'={silence_end}')
+        print(f'Writing {track}')
+        # e.g.  sox recording.wav 01.wav trim 0 =539.832
+        #       sox recording.wav 02.wav trim 539.832 =947.627
+        #       sox recording.wav 03.wav trim 947.627
+        subprocess.run(subprocess_args)
+        old_silence_end = silence_end
+
+
 args = init_argument_parser()
-print(args)
+# print(args)
 
 if not args.duration > 0:
     print('duration must be >0')
     exit()
 
-p1 = subprocess.Popen(["ffmpeg", "-i", f"{args.file}", "-af", f"silencedetect=noise={args.noise}dB:d={args.duration}", "-f", "null", "-"], stderr=subprocess.PIPE)
-p2 = subprocess.Popen(["grep", "silence_end"], stdin=p1.stderr, stdout=subprocess.PIPE)
-with open(tracks_file_name, 'w') as tracks_file:
-    p3 = subprocess.Popen(["awk", "{print $5}"], stdin=p2.stdout, stdout=tracks_file)
-    p3.communicate()
-
-subprocess.run(['cat', tracks_file_name])
-
-
-
+silence_ends = fetch_silence_ends(args.file, args.noise, args.duration)
+print_expected_tracks()
+if args.execute:
+    write_tracks(args.file, args.offset)
