@@ -83,6 +83,10 @@ def write_tracks(file, offset):
 args = init_argument_parser()
 # print(args)
 
+# TODO Add test if file exists
+
+# TODO Check if noise is < 0
+
 if not args.duration > 0:
     print('duration must be >0')
     exit()
