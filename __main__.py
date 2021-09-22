@@ -1,4 +1,6 @@
-# __main__.py
+"""
+This script can split an audio (.wav) file into tracks that are separated by silences between them.
+"""
 
 import subprocess
 from argparse import Namespace, ArgumentParser
@@ -14,20 +16,20 @@ def init_argument_parser() -> Namespace:
 
     # mandatory:
     parser.add_argument('file', type=str,
-                        help="The .wav file that is to be split")
+                        help="the .wav file that is to be split")
     # mandatory:
     parser.add_argument('noise', type=float,
-                        help="The noise measured in decibel that is to be regarded as silence (e.g. -50)")
+                        help="the noise measured in decibel that is to be regarded as silence (e.g. -50)")
     # mandatory:
     parser.add_argument('duration', type=float,
-                        help="The silence duration in seconds that should be detected (e.g. 1.5)")
+                        help="the silence duration in seconds that should be detected (e.g. 1.5)")
     # optional:
     parser.add_argument('-o', '--offset', type=float, default=OFFSET_DEFAULT,
-                        help=f'The offset in seconds before a track starts'
+                        help=f'the offset in seconds before a track starts'
                              f' (if not specified, the default value {OFFSET_DEFAULT} will be taken!)')
     # optional flag:
     parser.add_argument('-x', '--execute', action='store_true',
-                        help='If set, the detected audio tracks will be written into current working directory')
+                        help='if set, the detected audio tracks will be written into current working directory')
     return parser.parse_args()
 
 
@@ -81,6 +83,8 @@ def write_tracks(file, offset):
         old_silence_end = silence_end
 
 
+############## START ##############
+
 args = init_argument_parser()
 # print(args)
 
@@ -88,10 +92,10 @@ if not Path(args.file).exists():
     print(f'File "{args.file}" does not exist')
     exit(1)
 if not args.noise < 0:
-    print('noise must be <0')
+    print('Argument "noise" must be <0')
     exit(1)
 if not args.duration > 0:
-    print('duration must be >0')
+    print('Argument "duration" must be >0')
     exit(1)
 
 silence_ends = fetch_silence_ends(args.file, args.noise, args.duration)
