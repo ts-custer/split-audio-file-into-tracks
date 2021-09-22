@@ -2,6 +2,7 @@
 
 import subprocess
 from argparse import Namespace, ArgumentParser
+from pathlib import Path
 from typing import List
 from math import copysign
 
@@ -83,13 +84,15 @@ def write_tracks(file, offset):
 args = init_argument_parser()
 # print(args)
 
-# TODO Add test if file exists
-
-# TODO Check if noise is < 0
-
+if not Path(args.file).exists():
+    print(f'File "{args.file}" does not exist')
+    exit(1)
+if not args.noise < 0:
+    print('noise must be <0')
+    exit(1)
 if not args.duration > 0:
     print('duration must be >0')
-    exit()
+    exit(1)
 
 silence_ends = fetch_silence_ends(args.file, args.noise, args.duration)
 print_expected_tracks()
