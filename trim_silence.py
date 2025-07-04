@@ -22,9 +22,13 @@ def init_argument_parser() -> Namespace:
         help="The .wav file to be trimmed."
     )
     parser.add_argument(
-        'noise',
+        '-t', '--threshold',
         type=float,
-        help="Silence threshold in dB (e.g., -50)."
+        default=-70.0,
+        help=(
+            "Silence threshold in dB (default: -70). "
+            "Use a higher value (e.g. -50) if silences are louder."
+        )
     )
     parser.add_argument(
         '-o', '--offset',
@@ -141,11 +145,11 @@ if not Path(args.file).exists():
     print(f'File "{args.file}" does not exist.')
     exit(1)
 
-if args.noise >= 0:
-    print('Argument "noise" must be < 0 dB.')
+if args.threshold >= 0:
+    print('Argument "threshold" must be < 0 dB.')
     exit(1)
 
-start, end, duration = detect_trim_points(args.file, args.noise)
+start, end, duration = detect_trim_points(args.file, args.threshold)
 start = max(0.0, start - args.offset)
 end = min(duration, end + args.offset)
 
