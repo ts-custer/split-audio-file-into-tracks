@@ -1,144 +1,140 @@
 """
-This script can split an audio (.wav) file into tracks that are separated by silences between them.
+This script splits an audio (.wav) file into tracks separated by silences.
 """
 
+import re
 import subprocess
 from argparse import ArgumentParser, Namespace
+from math import copysign
 from pathlib import Path
 from typing import List
-from math import copysign
-
 
 OFFSET_DEFAULT = 0.4
 
 
 def init_argument_parser() -> Namespace:
-    """Initialize and return the argument parser namespace."""
+    """Initialize and return the command-line argument parser."""
     parser = ArgumentParser(description=__doc__)
 
-    # mandatory:
     parser.add_argument(
         'file',
         type=str,
-        help="the .wav file that is to be split"
+        help="The .wav file to be split."
     )
-    # mandatory:
     parser.add_argument(
         'noise',
         type=float,
-        help="the noise measured in decibel that is to be regarded as silence (e.g. -50)"
+        help="Noise threshold in dB to detect silence (e.g., -50)."
     )
-    # mandatory:
     parser.add_argument(
         'duration',
         type=float,
-        help="the silence duration in seconds that should be detected (e.g. 1.5)"
+        help="Silence duration in seconds to detect (e.g., 1.5)."
     )
-    # optional:
     parser.add_argument(
         '-o', '--offset',
         type=float,
         default=OFFSET_DEFAULT,
         help=(
-            f'the offset in seconds before a track starts '
-            f'(if not specified, the default value {OFFSET_DEFAULT} will be taken!)'
+            f"Offset in seconds before track start "
+            f"(default: {OFFSET_DEFAULT})."
         )
     )
-    # optional flag:
     parser.add_argument(
         '-x', '--execute',
         action='store_true',
-        help='if set, the detected audio tracks will be written into current working directory'
+        help="If set, write detected tracks to separate .wav files."
     )
+
     return parser.parse_args()
 
 
-def fetch_silence_ends(file: str, noise: float, duration: float) -> List[float]:
-    """Fetch silence end times from the audio file using ffmpeg."""
-    # e.g.
-    # ffmpeg -i recording.wav -af silencedetect=noise=-45dB:d=1.5 -f null - 2> >(grep 'silence_end') | awk '{print $5}'
-    #
-    p1 = subprocess.Popen(
-        [
-            "ffmpeg", "-i", f"{file}",
-            "-af", f"silencedetect=noise={noise}dB:d={duration}",
-            "-f", "null", "-"
-        ],
-        stderr=subprocess.PIPE
-    )
-    p2 = subprocess.Popen(
-        ["grep", "silence_end"],
-        stdin=p1.stderr,
-        stdout=subprocess.PIPE
-    )
-    p3 = subprocess.Popen(
-        ["awk", "{print $5}"],
-        stdin=p2.stdout,
-        stdout=subprocess.PIPE
+def fetch_silence_ends(
+    file: str, noise: float, duration: float
+) -> List[float]:
+    """
+    Run ffmpeg silence detection and return a list of silence_end timestamps.
+    """
+    cmd = [
+        "ffmpeg", "-i", file,
+        "-af", f"silencedetect=noise={noise}dB:d={duration}",
+        "-f", "null", "-"
+    ]
+
+    process = subprocess.run(
+        cmd,
+        stderr=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        text=True
     )
 
-    # stdout_result is of type 'bytes'  e.g.  b'540.132\n947.927\n1300.19\n1627.23\n2018.4\n2647.47\n2842\n'
-    stdout_result = p3.communicate()[0]
-    split_mark = b'\n'
-    return [float(b) for b in stdout_result.split(split_mark) if b != b'']
+    silence_end_times = []
+    for line in process.stderr.splitlines():
+        match = re.search(r"silence_end: (\d+(\.\d+)?)", line)
+        if match:
+            silence_end_times.append(float(match.group(1)))
+
+    return silence_end_times
 
 
-def round_away_from_zero(f: float) -> int:
-    """Round a float away from zero to the nearest integer."""
-    return int(f + 0.5 * copysign(1, f))
+def round_away_from_zero(value: float) -> int:
+    """Round float away from zero to nearest integer."""
+    return int(value + 0.5 * copysign(1, value))
 
 
 def format_seconds(seconds: int) -> str:
-    """Format seconds as MM:SS string."""
+    """Convert seconds to mm:ss format."""
     minutes = seconds // 60
-    return '%.02d:%.02d' % (minutes, seconds % 60)
+    return f"{minutes:02}:{seconds % 60:02}"
 
 
-def print_expected_tracks() -> None:
-    """Print the expected track filenames and durations."""
-    old_silence_end = 0
-    for number, silence_end in enumerate(silence_ends, start=1):
-        track_duration_in_seconds = round_away_from_zero(silence_end - old_silence_end)
-        print('%.02d.wav' % number, '\t', format_seconds(track_duration_in_seconds))
-        old_silence_end = silence_end
+def print_expected_tracks(silence_ends: List[float]) -> None:
+    """
+    Print the expected output track names and durations based on silence ends.
+    """
+    old_end = 0
+    for number, end in enumerate(silence_ends, start=1):
+        duration = round_away_from_zero(end - old_end)
+        print(f"{number:02}.wav\t{format_seconds(duration)}")
+        old_end = end
 
 
-def write_tracks(file: str, offset: float) -> None:
-    """Write audio tracks to files based on silence ends and offset."""
-    number_of_tracks = len(silence_ends)
-    old_silence_end = 0
-    for number, silence_end in enumerate(silence_ends, start=1):
-        silence_end -= offset
-        track = '%.02d.wav' % number
-        subprocess_args = ['sox', file, track, 'trim', str(old_silence_end)]
-        if number < number_of_tracks:
-            subprocess_args.append(f'={silence_end}')
-        print(f'Writing {track}')
-        # e.g.  sox recording.wav 01.wav trim 0 =539.832
-        #       sox recording.wav 02.wav trim 539.832 =947.627
-        #       sox recording.wav 03.wav trim 947.627
-        subprocess.run(subprocess_args)
-        old_silence_end = silence_end
+def write_tracks(
+    file: str, silence_ends: List[float], offset: float
+) -> None:
+    """
+    Write audio segments to separate files using sox.
+    """
+    old_end = 0
+    for number, end in enumerate(silence_ends, start=1):
+        end -= offset
+        track_file = f"{number:02}.wav"
+        args = ['sox', file, track_file, 'trim', str(old_end)]
+        if number < len(silence_ends):
+            args.append(f"={end}")
+        print(f"Writing {track_file}")
+        subprocess.run(args)
+        old_end = end
 
 
-############## START ##############
+# ------------------- MAIN -------------------
 
 args = init_argument_parser()
 
 if not Path(args.file).exists():
-    print(f'File "{args.file}" does not exist')
+    print(f'File "{args.file}" does not exist.')
     exit(1)
 
-if not args.noise < 0:
-    print('Argument "noise" must be <0')
+if args.noise >= 0:
+    print('Argument "noise" must be < 0 dB.')
     exit(1)
 
-if not args.duration > 0:
-    print('Argument "duration" must be >0')
+if args.duration <= 0:
+    print('Argument "duration" must be > 0 seconds.')
     exit(1)
 
 silence_ends = fetch_silence_ends(args.file, args.noise, args.duration)
-print_expected_tracks()
+print_expected_tracks(silence_ends)
 
 if args.execute:
-    write_tracks(args.file, args.offset)
+    write_tracks(args.file, silence_ends, args.offset)
