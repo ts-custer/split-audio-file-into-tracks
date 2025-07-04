@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List
 from math import copysign
 
-OFFSET_DEFAULT = 0.3
+OFFSET_DEFAULT = 0.4
 
 
 def init_argument_parser() -> Namespace:
