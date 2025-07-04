@@ -117,13 +117,19 @@ def trim_audio(file: str, start: float, end: float, output_file: str) -> None:
 
 
 def normalize_audio(file: str) -> None:
-    """Normalize audio using sox safely (via temp file)."""
+    """
+    Normalize audio using sox after removing DC offset.
+    Leaves 0.5 dB headroom to prevent dither clipping.
+    """
     temp_file = Path(file).with_suffix(".normalized.wav")
 
-    print(f"Normalizing: {file}")
-    subprocess.run(["sox", file, str(temp_file), "gain", "-n"])
+    print(f"Removing DC offset and normalizing: {file}")
+    subprocess.run([
+        "sox", file, str(temp_file),
+        "dcshift", "-0.0",
+        "gain", "-n", "-0.5"
+    ])
 
-    # Replace original with normalized version
     temp_file.replace(file)
 
 
