@@ -30,7 +30,10 @@ def init_argument_parser() -> Namespace:
         '-o', '--offset',
         type=float,
         default=OFFSET_DEFAULT,
-        help=f"Offset in seconds before non-silence start (default: {OFFSET_DEFAULT})."
+        help=(
+            f"Offset in seconds applied before start and after end of "
+            f"non-silence (default: {OFFSET_DEFAULT})."
+        )
     )
     parser.add_argument(
         '-x', '--execute',
@@ -57,12 +60,12 @@ def format_seconds(seconds: int) -> str:
     return f"{minutes:02}:{seconds % 60:02}"
 
 
-def detect_trim_points(file: str, noise: float) -> tuple[float, float]:
+def detect_trim_points(file: str, noise: float) -> tuple[float, float, float]:
     """
     Use ffmpeg to detect start and end points of audio by silence detection.
 
     Returns:
-        (start_time, end_time) in seconds
+        (start_time, end_time, duration) in seconds
     """
     cmd = [
         "ffmpeg", "-i", file,
@@ -99,7 +102,7 @@ def detect_trim_points(file: str, noise: float) -> tuple[float, float]:
     start_time = silence_ends[0] if silence_ends else 0.0
     end_time = silence_starts[-1] if silence_starts else duration
 
-    return start_time, end_time
+    return start_time, end_time, duration
 
 
 def trim_audio(file: str, start: float, end: float, output_file: str) -> None:
@@ -131,14 +134,21 @@ if args.noise >= 0:
     print('Argument "noise" must be < 0 dB.')
     exit(1)
 
-start, end = detect_trim_points(args.file, args.noise)
+start, end, duration = detect_trim_points(args.file, args.noise)
 start = max(0.0, start - args.offset)
+end = min(duration, end + args.offset)
 
 if end <= start:
     print("Trimmed duration would be 0 or negative. Exiting.")
     exit(1)
 
 trimmed_duration = round_away_from_zero(end - start)
+original_duration = round_away_from_zero(duration)
+
+print(
+    f"Original duration: {original_duration} seconds "
+    f"({format_seconds(original_duration)})"
+)
 print(
     f"Expected trimmed duration: {trimmed_duration} seconds "
     f"({format_seconds(trimmed_duration)})"
