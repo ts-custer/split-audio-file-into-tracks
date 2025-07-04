@@ -117,9 +117,14 @@ def trim_audio(file: str, start: float, end: float, output_file: str) -> None:
 
 
 def normalize_audio(file: str) -> None:
-    """Normalize audio using sox."""
+    """Normalize audio using sox safely (via temp file)."""
+    temp_file = Path(file).with_suffix(".normalized.wav")
+
     print(f"Normalizing: {file}")
-    subprocess.run(["sox", file, file, "gain", "-n"])
+    subprocess.run(["sox", file, str(temp_file), "gain", "-n"])
+
+    # Replace original with normalized version
+    temp_file.replace(file)
 
 
 # ------------------- MAIN -------------------
