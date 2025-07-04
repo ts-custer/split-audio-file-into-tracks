@@ -51,6 +51,12 @@ def round_away_from_zero(value: float) -> int:
     return int(value + 0.5 * copysign(1, value))
 
 
+def format_seconds(seconds: int) -> str:
+    """Convert seconds to mm:ss format."""
+    minutes = seconds // 60
+    return f"{minutes:02}:{seconds % 60:02}"
+
+
 def detect_trim_points(file: str, noise: float) -> tuple[float, float]:
     """
     Use ffmpeg to detect start and end points of audio by silence detection.
@@ -90,7 +96,6 @@ def detect_trim_points(file: str, noise: float) -> tuple[float, float]:
             if match:
                 silence_ends.append(float(match.group(1)))
 
-    # Estimate first sound start and last sound end
     start_time = silence_ends[0] if silence_ends else 0.0
     end_time = silence_starts[-1] if silence_starts else duration
 
@@ -98,9 +103,7 @@ def detect_trim_points(file: str, noise: float) -> tuple[float, float]:
 
 
 def trim_audio(file: str, start: float, end: float, output_file: str) -> None:
-    """
-    Trim the audio using sox from start to end.
-    """
+    """Trim the audio using sox from start to end."""
     duration = end - start
     cmd = [
         "sox", file, output_file,
@@ -111,9 +114,7 @@ def trim_audio(file: str, start: float, end: float, output_file: str) -> None:
 
 
 def normalize_audio(file: str) -> None:
-    """
-    Normalize audio using sox.
-    """
+    """Normalize audio using sox."""
     print(f"Normalizing: {file}")
     subprocess.run(["sox", file, file, "gain", "-n"])
 
@@ -138,7 +139,10 @@ if end <= start:
     exit(1)
 
 trimmed_duration = round_away_from_zero(end - start)
-print(f"Expected trimmed duration: {trimmed_duration} seconds")
+print(
+    f"Expected trimmed duration: {trimmed_duration} seconds "
+    f"({format_seconds(trimmed_duration)})"
+)
 
 if args.execute:
     output_path = Path(args.file).with_stem(
